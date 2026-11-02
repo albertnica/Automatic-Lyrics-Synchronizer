@@ -238,7 +238,11 @@
     let cachedModelSet = new Set();
     let currentMode = "folder";
     let songsList = [];
-    let currentSourceFolder = localStorage.getItem("als_source_folder") || "songs";
+    const urlFolder = new URLSearchParams(window.location.search).get("folder");
+    let currentSourceFolder = urlFolder || localStorage.getItem("als_source_folder") || "songs";
+    if (urlFolder) {
+      localStorage.setItem("als_source_folder", urlFolder);
+    }
 
     // Initialize Page
     document.addEventListener("DOMContentLoaded", async () => {

@@ -16,7 +16,20 @@ Responsibilities:
 """
 
 import os
+import sys
 import shutil
+
+# Reconfigure stdout/stderr to UTF-8 on Windows
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 from pathlib import Path
 from modules import utils as mutils
 from modules import logs_manager, db_manager, ingest, lyrics_retrieving, whisper_transcription, lyrics_checker, lrc_writer, decision_logic

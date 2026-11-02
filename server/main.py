@@ -8,7 +8,21 @@ and static delivery of the lightweight two-page web studio.
 """
 
 import os
+import sys
 import threading
+
+# Reconfigure stdout/stderr to UTF-8 on Windows to prevent UnicodeEncodeError
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware

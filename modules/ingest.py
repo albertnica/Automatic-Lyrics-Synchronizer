@@ -92,17 +92,35 @@ def ingest_existing_lrcs_and_cleanup_songs(folder: str = SONGS_FOLDER):
         except Exception as e:
             info(f"warning: error processing {lrc_path}: {e}")
 
-    # Remove non-audio files from songs/ to keep folder tidy.
-    info("Cleaning songs/: deleting non-audio files...")
-    allowed_exts = {'.flac', '.mp3', '.wav', '.txt'}
-    for entry in os.listdir(SONGS_FOLDER):
-        fpath = os.path.join(SONGS_FOLDER, entry)
-        if os.path.isfile(fpath):
-            ext = os.path.splitext(entry)[1].lower()
-            if ext not in allowed_exts:
-                try:
-                    os.remove(fpath)
-                    dbg(f"removed file {entry} from songs/")
-                except Exception as e:
-                    info(f"warning: could not remove {entry}: {e}")
+    # Only remove non-audio files from default songs/ folder to keep local workspace tidy;
+    # Never delete files from a custom user directory.
+    if folder == SONGS_FOLDER and os.path.isdir(SONGS_FOLDER):
+        info("Cleaning songs/: deleting non-audio files...")
+        allowed_exts = {'.flac', '.mp3', '.wav', '.txt'}
+        for entry in os.listdir(SONGS_FOLDER):
+            fpath = os.path.join(SONGS_FOLDER, entry)
+            if os.path.isfile(fpath):
+                ext = os.path.splitext(entry)[1].lower()
+                if ext not in allowed_exts:
+                    try:
+                        os.remove(fpath)
+                        dbg(f"removed file {entry} from songs/")
+                    except Exception as e:
+                        info(f"warning: could not remove {entry}: {e}")
     dbg("ingest and cleanup finished")
+
+
+def prepare_folders() -> None:
+    """
+    Ensure the output lyrics directory and canonical lyrics database exist.
+    """
+    from . import db_manager
+    db_manager.initialize_folders()
+
+
+def ingest_existing_lrcs(folder: str = SONGS_FOLDER) -> None:
+    """
+    Ingest existing LRC files found next to the audio tracks.
+    """
+    ingest_existing_lrcs_and_cleanup_songs(folder)
+

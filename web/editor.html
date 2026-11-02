@@ -157,7 +157,11 @@
     let lyricLines = [];
     let activeLineIndex = -1;
     let allSongs = [];
-    let currentSourceFolder = localStorage.getItem("als_source_folder") || "songs";
+    const urlFolder = new URLSearchParams(window.location.search).get("folder");
+    let currentSourceFolder = urlFolder || localStorage.getItem("als_source_folder") || "songs";
+    if (urlFolder) {
+      localStorage.setItem("als_source_folder", urlFolder);
+    }
 
     document.addEventListener("DOMContentLoaded", async () => {
       document.getElementById("editor-folder-label").innerText = currentSourceFolder;

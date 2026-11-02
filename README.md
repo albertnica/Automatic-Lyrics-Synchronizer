@@ -1,105 +1,122 @@
-# AI Lyrics Retriever & Synchronizer
+# Automatic Lyrics Synchronizer (Studio v2.0)
 
-A practical Python tool to generate synchronized LRC lyrics for audio files (FLAC). The project combines multi-model ASR (Whisper) and interpolation logic to produce conservative, high-quality line timestamps and LRC files from plain Genius lyrics.
+A high-performance Python 3.13 system and Web Studio designed to retrieve, transcribe, anchor-interpolate, and micro-edit synchronized `.lrc` lyrics for local audio libraries (FLAC, MP3, WAV, M4A, OGG).
+
+Combines native REST retrieval from LRCLIB, Genius API fallback, multi-model ASR evaluation (OpenAI Whisper, Distil-Whisper, and Alibaba Qwen3-ASR with Qwen3-ForcedAligner), and an interactive dual-track waveform micro-editor.
+
+---
+
+## Web Studio Previews
+
+### 1. Synchronization & Model Discovery (`/sync`)
+Interactive setup with native folder picker, Hugging Face model search and local cache readiness badges, active evaluation priority management, and live SSE event streaming with real-time metrics.
+
+![Synchronization & Model Discovery](docs/screenshots/sync_studio.png)
+
+### 2. 3-Panel LRC Studio & Micro-Editor (`/editor`)
+3-column workspace featuring instant track preloading, `[✓ LRC READY]` vs `[✗ MISSING]` status badges, Wavesurfer.js audio visualizer, offset adjusting pills ($\pm 50\text{ms}$ / $\pm 200\text{ms}$), keyboard shortcuts, and direct saving to `.lyrics_db/` and local music directories.
+
+![LRC Studio & Micro-Editor](docs/screenshots/lrc_editor.png)
+
+---
 
 ## Features
-- Compare transcriptions from multiple Whisper models and pick the best candidate.
-- Identify reliable anchor lines and interpolate timestamps for other lines.
-- Preserve and reuse canonical LRCs in a local `.lyrics_db` folder.
-- Treat local `.lrc` files placed inside `songs/` as authoritative (moved into `lyrics/` and copied to `.lyrics_db`).
-- Optional Genius integration to fetch raw lyrics (requires token in `credentials.json`).
-- Per-run logs and per-model diagnostics saved under `.logs/`.
 
-## Quick start
+- **Two-Page Web Studio**:
+  - **`/sync`**: Audio source directory scanning, Hugging Face model search with autocomplete and local cache readiness badges (`[READY]` / `[DOWNLOAD]`), active model ordering, `Force ASR` multi-model evaluation bypass, and live SSE execution log.
+  - **`/editor`**: Responsive dual-track micro-editor with Wavesurfer.js, active cue auto-scrolling, timestamp nudging, live audio scrubbing, and instant sync commit.
+- **Graceful Lifecycle Management**:
+  - Integrated `⏻ Stop Server` button in the top navigation header to terminate the local Python backend cleanly via `POST /api/shutdown`.
+- **Intelligent Waterfall Resolver**:
+  1. **Canonical Local Cache (`.lyrics_db/`)**: Instant hash/metadata restoration for previously synchronized tracks.
+  2. **Authoritative Local Override**: Moves `.lrc` files placed next to audio directly into canonical storage.
+  3. **LRCLIB Native REST API**: Native client integration with zero desktop binary dependencies (`https://lrclib.net/api`).
+  4. **Genius API Client**: Authenticated fallback for plain-text lyrics when public LRC databases miss.
+  5. **Multi-Model ASR Consensus**: Evaluates candidates across multiple local or downloaded Whisper/Qwen models, scoring anchor lines and silence boundaries to choose the highest-confidence synchronization.
+- **Qwen3-ASR & ForcedAligner Integration**:
+  - Native integration of Alibaba's `Qwen3ASRModel` paired with `Qwen/Qwen3-ForcedAligner-0.6B` and `max_new_tokens=512` for precise phoneme/word timestamp alignment.
+- **Decoupled Architecture**:
+  - Clean separation between core synchronization engine (`modules/`) and interfaces (CLI `main.py` and FastAPI `server/`).
 
-Prerequisites:
-- Python 3.10+ (3.13 recommended).
-- Git (optional).
+---
 
-1) Clone the repo (or download the files):
+## Quick Start
 
+### Prerequisites
+- **Python 3.13** (or 3.10+)
+- **CUDA-enabled PyTorch** (recommended for local GPU ASR inference)
+- **Windows / Linux / macOS**
+
+### 1. Installation
 ```powershell
-git clone <repo-url>
+git clone https://github.com/your-username/Automatic-Lyrics-Synchronizer.git
 cd Automatic-Lyrics-Synchronizer
-```
 
-2) Create and activate a virtual environment:
-
-```powershell
-python -m venv venv
-venv\Scripts\Activate.ps1
-```
-
-3) Install Python dependencies:
-
-```powershell
-pip install --upgrade pip
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-4) (Optional) Install a CUDA-enabled PyTorch wheel if you plan to use GPU acceleration. Find the right command for your system at https://pytorch.org/ and run it in the activated venv.
-
+*(Optional) Install GPU-accelerated PyTorch:*
 ```powershell
 pip install --index-url https://download.pytorch.org/whl/cu121 torch torchvision
 ```
 
-5) Prepare folders and assets:
-- Put your FLAC files (and optional existing .lrc files) under `songs/`.
-- Optionally run [LRCGET](https://github.com/tranxuanthang/lrcget) on the `songs/` folder to search for existing synced lyric files from public sources.
-- Create a `credentials.json` at the project root if you want Genius support:
-
-```json
-{
-  "genius_access_token": "YOUR_GENIUS_TOKEN"
-}
+### 2. Launching the Web Studio
+```powershell
+python -m uvicorn server.main:app --host 127.0.0.1 --port 8585 --reload
 ```
+Open your browser at **[http://127.0.0.1:8585](http://127.0.0.1:8585)**.
 
-6) Run the main script:
-
+### 3. CLI Batch Mode
+To run batch synchronization directly via terminal:
 ```powershell
 python main.py
 ```
 
-After a successful run:
-- Generated LRCs are written to `lyrics/`.
-- Canonical copies are stored in `.lyrics_db/`.
-- Logs and raw data for each run appear under `.logs/<timestamp>/`.
+---
 
-## Configuration
+## Keyboard Shortcuts (LRC Studio)
 
-Edit `config.py` to tune behavior. Key options:
-- `DEBUG`: verbose debug output.
-- `SONGS_FOLDER`, `LYRICS_FOLDER`, `LYRICS_DB_FOLDER`, `LOGS_FOLDER`.
-- `TRANSCRIBE_MODELS`: list of Whisper model names to try (order matters).
+| Key Shortcut | Action |
+|---|---|
+| <kbd>Space</kbd> | Play / Pause audio playback |
+| <kbd>W</kbd> / <kbd>S</kbd> or <kbd>↑</kbd> / <kbd>↓</kbd> | Navigate previous / next lyric line |
+| <kbd>A</kbd> / <kbd>D</kbd> | Adjust active timestamp by $\pm 50\text{ms}$ |
+| <kbd>Shift</kbd> + <kbd>A</kbd> / <kbd>D</kbd> | Adjust active timestamp by $\pm 200\text{ms}$ |
+| <kbd>R</kbd> | Stamp current playback position to active line |
+| <kbd>Ctrl</kbd> + <kbd>S</kbd> | Save modified LRC to storage |
 
-## How it works
+---
 
-1. Create a per-run folder in `.logs/` and initialize logging.
-2. Recreate the `lyrics/` output folder and ingest any `.lrc` files found in `songs/` (these are treated as authoritative).
-3. For each `.flac` in `songs/`:
-   - Try to restore an existing canonical LRC from `.lyrics_db/` using FLAC metadata (title/artist).
-   - If not restored, use a local `.txt` (if present) as the lyrics source.
-   - If no local lyrics and a Genius token exists, attempt to fetch lyrics (raw text saved to logs only).
-   - For each configured ASR model:
-     - Transcribe the audio and collect token timestamps where available.
-     - Compute candidate anchors for lyric lines and filter by thresholds.
-     - Interpolate timestamps for non-anchor lines while avoiding interpolation across long silences.
-   - Score each model and choose the best one.
-   - Write the final `.lrc` into `lyrics/` and copy into `.lyrics_db/` under a canonical name derived from metadata.
+## Project Structure
 
-Detailed logs for each step are saved under the run folder to help debugging and tuning.
+```text
+Automatic-Lyrics-Synchronizer/
+├── docs/
+│   └── screenshots/              # Web Studio UI visual assets
+│       ├── sync_studio.png
+│       └── lrc_editor.png
+├── modules/
+│   ├── lrclib_client.py          # Native LRCLIB REST client
+│   ├── model_manager.py          # Hugging Face model search & cache manager
+│   ├── pipeline.py               # Core LyricsSyncService orchestrator
+│   ├── utils.py                  # Audio metadata extractor & LRC serializers
+│   └── whisper_transcription.py  # Multi-model ASR router (Whisper & Qwen)
+├── server/
+│   ├── folder_picker.py          # Native Explorer dialog subprocess
+│   ├── main.py                   # FastAPI application & shutdown handler
+│   ├── routers/                  # Modular API routers (songs, models, sync, lyrics)
+│   └── schemas.py                # Pydantic V2 request & response schemas
+├── web/
+│   ├── index.html                # Page 1: Sync, models & live telemetry
+│   ├── editor.html               # Page 2: 3-Panel LRC Studio & micro-editor
+│   └── style.css                 # Glassmorphic Google Antigravity stylesheet
+├── config.py                     # Global configuration & default model candidates
+├── main.py                       # CLI execution entrypoint
+└── requirements.txt              # Production dependency manifest
+```
 
-## Troubleshooting & tips
+---
 
-- If a model fails to run, check `.logs/<run>/` for per-model logs and stack traces.
-- If Genius seems to return wrong matches, ensure your FLAC metadata (artist/title) is correct; the system expects a strict title match in candidate scanning by default.
-- For large batches, prefer running with a GPU-enabled torch build and increase available resources.
-
-## In future versions
-
-Support custom plain lyrics as an input on /songs.
-Personal lyrics database with Supabase
-
-## License
-
-See LICENSE in the repository root.
+## License & Credits
+Licensed under the MIT License. Developed with FastAPI, Wavesurfer.js, Transformers, and Qwen ASR.

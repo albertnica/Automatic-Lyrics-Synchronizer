@@ -9,30 +9,62 @@ Responsibilities:
 """
 
 import os
+import sys
 from datetime import datetime
 import json
 from typing import Any, Dict, Optional
 from config import LOGS_FOLDER, LOG_NAME, DEBUG
 
-# Simple logging helpers
+# Reconfigure stdout/stderr to UTF-8 on Windows to prevent UnicodeEncodeError with Asian/Cyrillic chars
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
+# Simple logging helpers with encoding fault-tolerance
 def dbg(msg: str):
     """
     Log a debug message when DEBUG is True.
     """
     if DEBUG:
-        print("[DEBUG]", msg)
+        try:
+            print("[DEBUG]", msg)
+        except Exception:
+            try:
+                print("[DEBUG]", str(msg).encode("ascii", "replace").decode("ascii"))
+            except Exception:
+                pass
 
 def info(msg: str):
     """
     Log an info-level message to stdout.
     """
-    print("[INFO]", msg)
+    try:
+        print("[INFO]", msg)
+    except Exception:
+        try:
+            print("[INFO]", str(msg).encode("ascii", "replace").decode("ascii"))
+        except Exception:
+            pass
 
 def warn(msg: str):
     """
     Log a warning-level message to stdout.
     """
-    print("[WARN]", msg)
+    try:
+        print("[WARN]", msg)
+    except Exception:
+        try:
+            print("[WARN]", str(msg).encode("ascii", "replace").decode("ascii"))
+        except Exception:
+            pass
+
 
 def make_run_folder() -> str:
     """

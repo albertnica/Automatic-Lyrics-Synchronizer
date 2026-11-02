@@ -110,7 +110,7 @@ def get_genius_client(token: str) -> Optional['Genius']:
         mutils.dbg("lyrics_retrieving: lyricsgenius not installed")
         return None
     try:
-        g = Genius(token, timeout=15, retries=3, remove_section_headers=True)
+        g = Genius(token, timeout=15, retries=3, remove_section_headers=True, verbose=False)
         g.skip_non_songs = True
         g.verbose = False
         return g

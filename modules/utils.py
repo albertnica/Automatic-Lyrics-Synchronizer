@@ -21,7 +21,7 @@ except Exception:
     FLAC = None
 
 from config import SONGS_FOLDER, CREDENTIALS_PATH
-from .logs_manager import dbg, info
+from .logs_manager import dbg, info, warn
 
 # File utilities
 def load_credentials(path: str = CREDENTIALS_PATH) -> dict:
