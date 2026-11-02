@@ -95,21 +95,80 @@ def extract_metadata_from_flac(path: str) -> Tuple[Optional[str], Optional[str]]
     """
     Extract artist and title from FLAC tags when available, otherwise infer from filename.
     """
-    if os.path.exists(path) and FLAC is not None:
+    info = extract_audio_info(path)
+    return info.get("artist"), info.get("title")
+
+
+def extract_audio_info(path: str) -> dict:
+    """
+    Extract comprehensive metadata (artist, title, album, duration) from an audio file.
+
+    Why:
+    Services like LRCLIB utilize track duration and album tags alongside artist
+    and title to accurately differentiate live versions, remasters, and duplicate names.
+    """
+    result = {
+        "artist": None,
+        "title": None,
+        "album": None,
+        "duration": None,
+    }
+    if not os.path.exists(path):
+        return result
+
+    # 1. Mutagen FLAC support
+    if FLAC is not None and path.lower().endswith(".flac"):
         try:
             audio = FLAC(path)
-            artist = audio.get("artist", [None])[0]
-            title = audio.get("title", [None])[0]
-            if artist and title:
-                dbg(f"metadata from FLAC: artist='{artist}', title='{title}'")
-                return artist, title
+            result["artist"] = audio.get("artist", [None])[0]
+            result["title"] = audio.get("title", [None])[0]
+            result["album"] = audio.get("album", [None])[0]
+            if hasattr(audio, "info") and audio.info and hasattr(audio.info, "length"):
+                result["duration"] = float(audio.info.length)
+            if result["artist"] and result["title"]:
+                dbg(f"metadata from FLAC: artist='{result['artist']}', title='{result['title']}', duration={result['duration']}")
+                return result
         except Exception:
-            dbg("mutagen could not read FLAC tags (or mutagen not available)")
+            dbg("mutagen could not read FLAC tags")
+
+    # 2. General Mutagen File fallback
+    try:
+        import mutagen
+        audio = mutagen.File(path)
+        if audio is not None:
+            if hasattr(audio, "info") and audio.info and hasattr(audio.info, "length"):
+                result["duration"] = float(audio.info.length)
+            tags = getattr(audio, "tags", None) or {}
+            for k in ("artist", "ARTIST", "TPE1", "\xa9ART"):
+                if k in tags:
+                    val = tags[k]
+                    result["artist"] = str(val[0] if isinstance(val, (list, tuple)) else val)
+                    break
+            for k in ("title", "TITLE", "TIT2", "\xa9nam"):
+                if k in tags:
+                    val = tags[k]
+                    result["title"] = str(val[0] if isinstance(val, (list, tuple)) else val)
+                    break
+            for k in ("album", "ALBUM", "TALB", "\xa9alb"):
+                if k in tags:
+                    val = tags[k]
+                    result["album"] = str(val[0] if isinstance(val, (list, tuple)) else val)
+                    break
+            if result["artist"] and result["title"]:
+                return result
+    except Exception:
+        pass
+
+    # 3. Fallback to filename parsing: "Artist - Title" or "Title"
     base = os.path.splitext(os.path.basename(path))[0]
     if " - " in base:
         parts = base.split(" - ", 1)
-        return parts[0].strip(), parts[1].strip()
-    return None, base
+        result["artist"] = parts[0].strip()
+        result["title"] = parts[1].strip()
+    else:
+        result["title"] = base
+
+    return result
 
 def parse_lrc_header_tags(lrc_path: str) -> Tuple[Optional[str], Optional[str]]:
     """

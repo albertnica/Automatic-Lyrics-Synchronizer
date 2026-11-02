@@ -1,5 +1,5 @@
 # Toggle debug verbosity. When DEBUG is True many extra details are printed to stdout.
-DEBUG = True
+DEBUG = False
 
 # Directory names
 SONGS_FOLDER = "songs"           # Where your audio files (.flac) live

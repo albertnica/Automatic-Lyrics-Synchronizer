@@ -13,7 +13,7 @@ import os
 import sys
 import warnings
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple, Callable
 from config import TRANSCRIBE_MODELS
 from .logs_manager import dbg, info
 
@@ -23,6 +23,11 @@ try:
 except Exception:
     pipeline = None
     transformers_logging = None
+
+try:
+    from qwen_asr import Qwen3ASRModel
+except Exception:
+    Qwen3ASRModel = None
 
 try:
     import torch
@@ -41,6 +46,15 @@ try:
         transformers_logging.set_verbosity_error()
 except Exception:
     # Do not fail if logging APIs are unavailable.
+    pass
+
+# Load HF_TOKEN from credentials if available
+try:
+    from modules.utils import load_credentials
+    _creds = load_credentials()
+    if "HF_TOKEN" in _creds and _creds["HF_TOKEN"]:
+        os.environ["HF_TOKEN"] = _creds["HF_TOKEN"]
+except Exception:
     pass
 
 class _StderrFilter:
@@ -147,35 +161,150 @@ def _safe_pipeline_call(pipeline_obj, audio_path: str, **kwargs):
     finally:
         sys.stderr = orig_stderr
 
+def is_qwen_model(model_name: str) -> bool:
+    """
+    Check if a model identifier corresponds to Alibaba's Qwen ASR architecture.
+    """
+    return "qwen" in model_name.lower()
+
+
+def transcribe_with_qwen(model_name: str, audio_path: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Run speech recognition using native Qwen3ASRModel from qwen-asr package with forced aligner timestamps.
+    """
+    if Qwen3ASRModel is None:
+        err = "qwen-asr package is not installed."
+        dbg(err)
+        return None, err
+
+    try:
+        device_str = "cuda:0" if (torch and getattr(torch, "cuda", None) and torch.cuda.is_available()) else "cpu"
+        dtype = torch.float16 if device_str.startswith("cuda") else torch.float32
+
+        info(f"Loading Qwen ASR model '{model_name}' on {device_str}...")
+        aligner_id = "Qwen/Qwen3-ForcedAligner-0.6B"
+        aligner_kwargs = dict(dtype=dtype, device_map=device_str)
+
+        try:
+            model = Qwen3ASRModel.from_pretrained(
+                model_name,
+                device_map=device_str,
+                dtype=dtype,
+                max_new_tokens=512,
+                forced_aligner=aligner_id,
+                forced_aligner_kwargs=aligner_kwargs,
+            )
+            has_aligner = True
+        except Exception as align_err:
+            dbg(f"ForcedAligner failed to load ({align_err}); falling back to base model.")
+            model = Qwen3ASRModel.from_pretrained(
+                model_name,
+                device_map=device_str,
+                dtype=dtype,
+                max_new_tokens=512,
+            )
+            has_aligner = False
+
+        info(f"Transcribing '{os.path.basename(audio_path)}' with Qwen ASR (aligner={has_aligner})...")
+        res = model.transcribe(audio=audio_path, return_time_stamps=has_aligner)
+
+        chunks = []
+        raw_text = ""
+
+        if isinstance(res, list) and len(res) > 0:
+            item = res[0]
+            raw_text = getattr(item, "text", "")
+            time_stamps = getattr(item, "time_stamps", None)
+            if time_stamps:
+                stamps_flat = time_stamps[0] if (isinstance(time_stamps, list) and len(time_stamps) > 0 and isinstance(time_stamps[0], list)) else time_stamps
+                for stamp in stamps_flat:
+                    s_start = getattr(stamp, "start_time", 0.0)
+                    s_end = getattr(stamp, "end_time", 0.0)
+                    s_text = getattr(stamp, "text", "")
+                    chunks.append({"start": float(s_start), "end": float(s_end), "text": s_text})
+        elif isinstance(res, dict):
+            raw_text = res.get("text", "")
+            if "chunks" in res:
+                chunks = res["chunks"]
+        else:
+            raw_text = str(res)
+
+        if not chunks and raw_text:
+            chunks = [{"start": 0.0, "end": 9999.0, "text": raw_text}]
+
+        return {"model": model_name, "result": {"chunks": chunks, "text": raw_text}}, None
+    except Exception as e:
+        err_msg = f"Qwen ASR error: {e}"
+        dbg(err_msg)
+        return None, err_msg
+
+
+def transcribe_with_hf(model_name: str, audio_path: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Run speech recognition using standard Hugging Face pipeline (Whisper, Distil-Whisper, etc.).
+    """
+    actual_device = _detect_device(None)
+    try:
+        p = _safe_pipeline_init(model_name, device=actual_device)
+    except Exception as e:
+        return None, f"Pipeline init error: {e}"
+
+    if p is None:
+        return None, f"Pipeline initialization failed for model '{model_name}'"
+
+    try:
+        out = _safe_pipeline_call(p, audio_path)
+    except Exception as e:
+        return None, f"Pipeline execution error: {e}"
+
+    if out is None:
+        return None, f"Pipeline returned no output for model '{model_name}'"
+
+    return {"model": model_name, "result": out}, None
+
+
 def transcribe_with_model(model_name: str, audio_path: str) -> Optional[Dict[str, Any]]:
     """
     Transcribe `audio_path` with `model_name`. Returns {'model':..., 'result':...} or None.
+    Supports both standard Hugging Face transformers models and Qwen ASR models.
     """
-    # device selection is automatic (prefer CUDA if available, otherwise CPU)
-    actual_device = _detect_device(None)
-    p = _safe_pipeline_init(model_name, device=actual_device)
-    if p is None:
-        dbg(f"Pipeline init failed for {model_name}.")
-        return None
-    out = _safe_pipeline_call(p, audio_path)
-    if out is None:
-        dbg(f"Pipeline returned no output for {model_name}.")
-        return None
-    # Return raw result
-    return {"model": model_name, "result": out}
+    if is_qwen_model(model_name):
+        res, _ = transcribe_with_qwen(model_name, audio_path)
+        return res
+    res, _ = transcribe_with_hf(model_name, audio_path)
+    return res
 
-def transcribe_iter_models(audio_path: str, run_folder: Optional[str] = None) -> List[Dict[str, Any]]:
+
+def transcribe_iter_models(
+    audio_path: str,
+    run_folder: Optional[str] = None,
+    models: Optional[List[str]] = None,
+    status_hook: Optional[Callable[[str, str, str], None]] = None,
+) -> List[Dict[str, Any]]:
     """
     Try each configured model in order and collect successful transcription results.
+    Dispatches real-time model status events to status_hook if provided.
     """
     results = []
-    for m in TRANSCRIBE_MODELS:
+    models_to_run = models if models else TRANSCRIBE_MODELS
+    for m in models_to_run:
         info(f"Transcribing with model: {m}")
-        res = transcribe_with_model(m, audio_path)
+        if status_hook:
+            status_hook(m, "start", "")
+
+        if is_qwen_model(m):
+            res, err = transcribe_with_qwen(m, audio_path)
+        else:
+            res, err = transcribe_with_hf(m, audio_path)
+
         if res:
             results.append(res)
-            # Not saving full result as .json to keep pipeline IO responsibility in caller.
+            chunk_count = len(res.get("result", {}).get("chunks", []))
+            if status_hook:
+                status_hook(m, "success", f"({chunk_count} segments)")
             dbg(f"Model {m} succeeded.")
         else:
-            dbg(f"Model {m} failed.")
+            if status_hook:
+                status_hook(m, "failed", err or "ASR inference failed")
+            dbg(f"Model {m} failed: {err}")
     return results

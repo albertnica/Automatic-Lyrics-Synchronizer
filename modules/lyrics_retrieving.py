@@ -33,10 +33,36 @@ def _normalize_for_compare(s: Optional[str]) -> str:
     if not s:
         return ""
     s2 = s.lower().strip()
+    # Normalize apostrophes to straight quote
+    s2 = s2.replace("’", "'").replace("‘", "'").replace("`", "'")
     s2 = re.sub(r"[^\w\s']+", " ", s2)
     s2 = re.sub(r"\s+", " ", s2).strip()
     s2 = re.sub(r"^the\s+", "", s2)
     return s2
+
+def _clean_title_for_search(title: str) -> str:
+    """
+    Clean title by removing text starting from '(', '[', 'feat', 'ft.',
+    UNLESS the title contains 'remix' or 'mix'.
+    """
+    if not title:
+        return ""
+    
+    # If title contains 'remix' or 'mix', preserve it fully (user request)
+    if re.search(r"(?i)\b(remix|mix)\b", title):
+        return title.strip()
+
+    # Pattern to cut off from the first occurrence of:
+    # - ( ...
+    # - [ ...
+    # - feat ...
+    # - ft. ...
+    # We use non-capturing group (?:...) for the triggers.
+    # We look for these triggers preceded by optional whitespace.
+    # We ensure 'feat' and 'ft' are treated as words or followed by dot/space to avoid partial matches like 'defeat' if possible,
+    # but the user request was specific. We'll use \b for safety on feat/ft.
+    pattern = r"(?i)\s*(?:[\(\[]|\bfeat\b|\bft\b|\bfeat\.|\bft\.).*$"
+    return re.sub(pattern, "", title).strip()
 
 def _remove_parentheticals(s: str) -> str:
     """
@@ -157,6 +183,12 @@ def fetch_lyrics_by_meta(artist: str, title: str, genius: 'Genius', run_folder: 
     if genius is None:
         raise RuntimeError("Genius client not available")
 
+    # Clean title for search as per user request
+    original_title = title
+    title = _clean_title_for_search(title)
+    if title != original_title:
+        mutils.info(f"  -> Title cleaned for search: '{original_title}' -> '{title}'")
+
     mutils.info(f"  -> Trying search_song(title='{title}', artist='{artist}')")
     try:
         song = genius.search_song(title, artist)
@@ -264,8 +296,14 @@ def retrieve_for_flac(flac_path: str, run_folder: Optional[str] = None) -> Optio
     """
     Retrieve and save raw Genius lyrics for a FLAC file based on metadata.
     """
-    artist, title = mutils.extract_metadata_from_flac(flac_path)
-    mutils.info(f"Processing: {os.path.basename(flac_path)} metadata -> artist: '{artist}' | title: '{title}'")
+    artist, raw_title = mutils.extract_metadata_from_flac(flac_path)
+    title = _clean_title_for_search(raw_title)
+    
+    log_msg = f"Processing: {os.path.basename(flac_path)} metadata -> artist: '{artist}' | title: '{raw_title}'"
+    if title != raw_title:
+        log_msg += f" (Cleaned for search: '{title}')"
+    mutils.info(log_msg)
+
     if not artist or not title:
         mutils.dbg("lyrics_retrieving: metadata incomplete; skipping (do not use filename).")
         return None

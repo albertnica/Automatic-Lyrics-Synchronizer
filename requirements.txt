@@ -2,6 +2,12 @@ mutagen
 lyricsgenius
 requests
 transformers
+regex
 sentencepiece
 typing-extensions
+hf_xet
+fastapi
+uvicorn
+pydantic
+qwen-asr
 # torch -> best to install through their webpage

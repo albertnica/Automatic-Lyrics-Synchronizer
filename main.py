@@ -12,7 +12,7 @@ Responsibilities:
      * produce JSONL per-model and, when a lyrics txt is available, align segments -> per-line timestamps
      * compute model scores with decision_logic and select the best
      * write final .lrc using chosen aligned JSONL
-     * postprocess LRC and copy canonical entry into lyrics DB
+     * postprocess LRC and copy canonical entry qinto lyrics DB
 """
 
 import os
@@ -21,7 +21,7 @@ from pathlib import Path
 from modules import utils as mutils
 from modules import logs_manager, db_manager, ingest, lyrics_retrieving, whisper_transcription, lyrics_checker, lrc_writer, decision_logic
 from modules.logs_manager import init_anchors_log, append_anchor_entry, make_run_folder
-from config import LYRICS_FOLDER, TRANSCRIBE_MODELS, FALLBACK_TO_TRANSCRIPTION_ON_MISSING_LYRICS
+from config import LYRICS_FOLDER, TRANSCRIBE_MODELS, FALLBACK_TO_TRANSCRIPTION_ON_MISSING_LYRICS, SONGS_FOLDER
 import json
 
 def process_all():
@@ -67,8 +67,31 @@ def process_all():
         if restored:
             continue
 
-        # If no DB restore, attempt Genius retrieval (returns path to run_folder audit .txt)
-        lyrics_txt_path = lyrics_retrieving.retrieve_for_flac(fpath, run_folder=run_folder)
+        # Check for local lyrics file first
+        local_txt_name = f"{flac_base}.txt"
+        local_txt_path = os.path.join(SONGS_FOLDER, local_txt_name)
+        lyrics_txt_path = None
+
+        if os.path.exists(local_txt_path):
+            print(f"Found local lyrics file: {local_txt_name}")
+            dest_txt_path = os.path.join(run_folder, local_txt_name)
+            try:
+                shutil.move(local_txt_path, dest_txt_path)
+                lyrics_txt_path = dest_txt_path
+                mutils.info(f"Moved local lyrics file to run folder: {dest_txt_path}")
+            except Exception as e:
+                mutils.dbg(f"Could not move local lyrics file: {e}")
+                # Fallback copy+remove
+                try:
+                    shutil.copy2(local_txt_path, dest_txt_path)
+                    os.remove(local_txt_path)
+                    lyrics_txt_path = dest_txt_path
+                except Exception as e2:
+                    mutils.dbg(f"Could not copy/remove local lyrics file: {e2}")
+
+        # If no local lyrics, attempt Genius retrieval (returns path to run_folder audit .txt)
+        if not lyrics_txt_path:
+            lyrics_txt_path = lyrics_retrieving.retrieve_for_flac(fpath, run_folder=run_folder)
         if not lyrics_txt_path:
             # If configured to fallback, continue; otherwise skip file
             if FALLBACK_TO_TRANSCRIPTION_ON_MISSING_LYRICS:
@@ -222,6 +245,19 @@ def process_all():
                 append_anchor_entry(run_folder, basename, "no_aligned_output", f"scores={scores_str}")
         except Exception as e:
             append_anchor_entry(run_folder, basename, "write_lrc_failed", str(e))
+
+    # Cleanup: move any remaining .txt files from songs/ to run_folder
+    mutils.info("Moving remaining .txt files from songs/ to run folder...")
+    if os.path.exists(SONGS_FOLDER):
+        for entry in os.listdir(SONGS_FOLDER):
+            if entry.lower().endswith(".txt"):
+                src = os.path.join(SONGS_FOLDER, entry)
+                dst = os.path.join(run_folder, entry)
+                try:
+                    shutil.move(src, dst)
+                    mutils.info(f"Moved remaining file {entry} to run folder.")
+                except Exception as e:
+                    mutils.dbg(f"Could not move {entry}: {e}")
 
     print("Done processing all files.")
 

@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LRC Studio & Micro-Editor - Automatic Lyrics Synchronizer</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <!-- Wavesurfer.js 7 CDN -->
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+      </div>
+      <span class="brand-title">Automatic Lyrics Synchronizer</span>
+    </div>
+    <div class="header-actions">
+      <nav class="nav-tabs">
+        <a href="/sync" class="nav-tab">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          1. Synchronization
+        </a>
+        <a href="/editor" class="nav-tab active">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          2. LRC Studio & Editor
+        </a>
+      </nav>
+      <button class="btn-shutdown" id="btn-shutdown-studio" onclick="shutdownStudioServer()" title="Stop Web Studio Server">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+          <line x1="12" y1="2" x2="12" y2="12"></line>
+        </svg>
+        <span>Stop Server</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container" style="max-width: 1680px; width: 96%;">
+    <div class="studio-grid">
+      <!-- Left Panel: Fast Track Library Sidebar -->
+      <aside class="glass-panel track-sidebar">
+        <div class="section-header" style="margin-bottom: 4px;">
+          <div class="section-title" style="font-size: 0.95rem;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            Track Library
+          </div>
+          <span id="track-count-badge" class="badge badge-active">0 Tracks</span>
+        </div>
+
+        <!-- Folder Path & Switcher -->
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.74rem; color: var(--text-muted); padding: 6px 10px; background: rgba(255,255,255,0.02); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <span id="editor-folder-label" style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #a5b4fc; font-family: var(--font-mono);">songs</span>
+          <button class="btn btn-secondary" style="padding: 3px 8px; font-size: 0.7rem; flex-shrink: 0;" onclick="browseFolderEditor(event)">
+            Change...
+          </button>
+        </div>
+
+        <!-- Search Input -->
+        <div style="margin-top: 2px;">
+          <input
+            type="text"
+            id="track-search-input"
+            class="input-field"
+            style="padding: 8px 12px; font-size: 0.82rem;"
+            placeholder="Filter tracks by title/artist..."
+            oninput="filterTracks(this.value)"
+          >
+        </div>
+
+        <!-- Scrollable Track List -->
+        <div id="track-list" class="track-list">
+          <div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 0.82rem;">
+            Loading tracks...
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Panel: Audio Waveform & Playback Deck -->
+      <section class="glass-panel waveform-container">
+        <div class="section-header">
+          <div class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+            Waveform Deck
+          </div>
+          <span id="editor-status-badge" class="badge badge-active">Standby</span>
+        </div>
+
+        <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 10px 14px;">
+          <div style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">ACTIVE TRACK</div>
+          <div id="active-track-name" style="font-size: 1.05rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px;">
+            No track selected
+          </div>
+        </div>
+
+        <div class="waveform-deck">
+          <div id="waveform" style="margin-bottom: 12px; min-height: 110px;"></div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="font-family: var(--font-mono); font-size: 0.95rem; color: #38bdf8;">
+              <span id="current-time-display">00:00.00</span> / <span id="duration-time-display">00:00.00</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="play-pause-btn" class="btn btn-primary" onclick="togglePlayPause()" disabled>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Play / Pause
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Shortcuts Legend -->
+        <div>
+          <div style="font-size: 0.78rem; color: var(--text-muted); font-weight: 600; margin-bottom: 8px;">KEYBOARD SHORTCUTS</div>
+          <div class="shortcut-deck">
+            <div><kbd>Space</kbd> Play/Pause</div>
+            <div><kbd>W</kbd>/<kbd>S</kbd> or <kbd>&uarr;</kbd>/<kbd>&darr;</kbd> Prev/Next Line</div>
+            <div><kbd>A</kbd>/<kbd>D</kbd> &plusmn;50ms</div>
+            <div><kbd>Shift</kbd>+<kbd>A</kbd>/<kbd>D</kbd> &plusmn;200ms</div>
+            <div><kbd>R</kbd> Stamp Current Time</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Interactive Lyric Cue Timeline -->
+      <section class="glass-panel card-section" style="display: flex; flex-direction: column;">
+        <div class="section-header">
+          <div class="section-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            Interactive Lyric Cues
+          </div>
+          <button id="save-lrc-btn" class="btn btn-primary" onclick="saveLrc()" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save to .lyrics_db
+          </button>
+        </div>
+
+        <div id="cues-container" class="cue-timeline">
+          <div style="text-align: center; color: var(--text-muted); padding: 50px 20px;">
+            Select a track from the library on the left to preview and edit its synchronized LRC lines.
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script>
+    let wavesurfer = null;
+    let currentTrackBase = "";
+    let lyricLines = [];
+    let activeLineIndex = -1;
+    let allSongs = [];
+    let currentSourceFolder = localStorage.getItem("als_source_folder") || "songs";
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      document.getElementById("editor-folder-label").innerText = currentSourceFolder;
+      initWaveSurfer();
+      await loadSongsList();
+      setupKeyboardShortcuts();
+    });
+
+    async function browseFolderEditor(event) {
+      const btn = event.currentTarget || event.target;
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerText = "Opening...";
+      try {
+        const res = await fetch(`/api/songs/browse-folder?initial_dir=${encodeURIComponent(currentSourceFolder)}`, { method: "POST" });
+        const data = await res.json();
+        if (data.success && !data.canceled && data.path) {
+          currentSourceFolder = data.path;
+          localStorage.setItem("als_source_folder", currentSourceFolder);
+          document.getElementById("editor-folder-label").innerText = currentSourceFolder;
+          await loadSongsList();
+        }
+      } catch (err) {
+        console.error("Change folder failed", err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    }
+
+    function initWaveSurfer() {
+      wavesurfer = WaveSurfer.create({
+        container: "#waveform",
+        waveColor: "rgba(99, 102, 241, 0.4)",
+        progressColor: "#8b5cf6",
+        cursorColor: "#38bdf8",
+        cursorWidth: 2,
+        height: 110,
+        barWidth: 3,
+        barGap: 3,
+        barRadius: 3,
+        responsive: true,
+      });
+
+      wavesurfer.on("timeupdate", (currentTime) => {
+        document.getElementById("current-time-display").innerText = formatTime(currentTime);
+        highlightActiveCue(currentTime);
+      });
+
+      wavesurfer.on("ready", () => {
+        document.getElementById("duration-time-display").innerText = formatTime(wavesurfer.getDuration());
+        document.getElementById("play-pause-btn").disabled = false;
+        document.getElementById("editor-status-badge").className = "badge badge-ready";
+        document.getElementById("editor-status-badge").innerText = "Audio Ready";
+      });
+
+      wavesurfer.on("play", () => {
+        document.getElementById("play-pause-btn").innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+          Pause
+        `;
+      });
+
+      wavesurfer.on("pause", () => {
+        document.getElementById("play-pause-btn").innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Play
+        `;
+      });
+    }
+
+    async function loadSongsList() {
+      try {
+        const res = await fetch(`/api/songs?folder=${encodeURIComponent(currentSourceFolder)}`);
+        allSongs = await res.json();
+        document.getElementById("track-count-badge").innerText = `${allSongs.length} Tracks`;
+        renderTrackList(allSongs);
+
+        // Auto-select and preload the first track with LRC, or first song
+        if (allSongs.length > 0) {
+          const firstWithLrc = allSongs.find(s => s.has_lrc) || allSongs[0];
+          selectTrack(firstWithLrc);
+        }
+      } catch (e) {
+        console.error("Failed to load songs", e);
+      }
+    }
+
+    function renderTrackList(songs) {
+      const list = document.getElementById("track-list");
+      list.innerHTML = "";
+      if (songs.length === 0) {
+        list.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 30px 10px; font-size: 0.82rem;">No audio tracks found in this folder.</div>`;
+        return;
+      }
+
+      songs.forEach(s => {
+        const base = s.filename.replace(/\.[^/.]+$/, "");
+        const item = document.createElement("div");
+        item.className = `track-item ${base === currentTrackBase ? 'active' : ''}`;
+        item.id = `track-item-${escapeId(base)}`;
+        item.onclick = () => selectTrack(s);
+
+        item.innerHTML = `
+          <div class="track-item-header">
+            <div class="track-title" title="${escapeHtml(s.title || base)}">${escapeHtml(s.title || base)}</div>
+            <span class="badge ${s.has_lrc ? 'badge-ready' : 'badge-download'}" style="flex-shrink: 0; font-size: 0.68rem;">
+              ${s.has_lrc ? '✓ LRC Ready' : '✗ Missing'}
+            </span>
+          </div>
+          <div class="track-artist">
+            ${escapeHtml(s.artist || "Unknown Artist")} ${s.duration ? '· ' + formatTime(s.duration) : ''}
+          </div>
+        `;
+        list.appendChild(item);
+      });
+    }
+
+    function filterTracks(query) {
+      const q = (query || "").toLowerCase().trim();
+      const filtered = allSongs.filter(s => {
+        const name = (s.title || s.filename || "").toLowerCase();
+        const artist = (s.artist || "").toLowerCase();
+        return name.includes(q) || artist.includes(q);
+      });
+      renderTrackList(filtered);
+    }
+
+    async function selectTrack(song) {
+      const base = song.filename.replace(/\.[^/.]+$/, "");
+      currentTrackBase = base;
+
+      // Update active highlight in track library
+      document.querySelectorAll(".track-item").forEach(el => el.classList.remove("active"));
+      const activeEl = document.getElementById(`track-item-${escapeId(base)}`);
+      if (activeEl) activeEl.classList.add("active");
+
+      document.getElementById("active-track-name").innerText = `${song.artist || "Unknown"} - ${song.title || base}`;
+      document.getElementById("editor-status-badge").className = "badge badge-download";
+      document.getElementById("editor-status-badge").innerText = "Loading Audio...";
+
+      // Load Audio into Wavesurfer
+      wavesurfer.load(`/api/songs/stream/${encodeURIComponent(song.filename)}?folder=${encodeURIComponent(currentSourceFolder)}`);
+
+      // Load LRC Cues
+      try {
+        const res = await fetch(`/api/lyrics/${encodeURIComponent(base)}?folder=${encodeURIComponent(currentSourceFolder)}`);
+        const doc = await res.json();
+        lyricLines = doc.lines || [];
+        renderCues();
+        document.getElementById("save-lrc-btn").disabled = !doc.exists && lyricLines.length === 0;
+      } catch (e) {
+        console.error("Failed to load LRC", e);
+      }
+    }
+
+    function renderCues() {
+      const container = document.getElementById("cues-container");
+      container.innerHTML = "";
+
+      if (lyricLines.length === 0) {
+        container.innerHTML = `
+          <div style="text-align: center; color: var(--text-muted); padding: 50px 20px;">
+            No synchronized LRC lines found for this track. Synchronize it on Page 1 first.
+          </div>
+        `;
+        return;
+      }
+
+      lyricLines.forEach((line, idx) => {
+        const card = document.createElement("div");
+        card.id = `cue-${idx}`;
+        card.className = `cue-card ${idx === activeLineIndex ? 'active' : ''}`;
+        card.onclick = (e) => {
+          if (!e.target.closest("button") && !e.target.closest("input")) {
+            selectCue(idx, true);
+          }
+        };
+
+        card.innerHTML = `
+          <span class="cue-tag" id="tag-${idx}">${formatLrcTag(line.time)}</span>
+          <input
+            type="text"
+            class="cue-text"
+            value="${escapeHtml(line.text)}"
+            title="${escapeHtml(line.text)}"
+            oninput="this.title = this.value"
+            onchange="updateLineText(${idx}, this.value)"
+          >
+          <div class="cue-controls">
+            <button class="nudge-btn" onclick="nudgeCue(${idx}, -0.2)" title="-200ms">-200</button>
+            <button class="nudge-btn" onclick="nudgeCue(${idx}, -0.05)" title="-50ms">-50</button>
+            <button class="nudge-btn" onclick="nudgeCue(${idx}, 0.05)" title="+50ms">+50</button>
+            <button class="nudge-btn" onclick="nudgeCue(${idx}, 0.2)" title="+200ms">+200</button>
+          </div>
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function selectCue(idx, seekAudio = false) {
+      activeLineIndex = idx;
+      document.querySelectorAll(".cue-card").forEach((c, i) => {
+        c.classList.toggle("active", i === idx);
+      });
+
+      const el = document.getElementById(`cue-${idx}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      if (seekAudio && wavesurfer && lyricLines[idx]) {
+        wavesurfer.setTime(Math.max(0, lyricLines[idx].time));
+      }
+    }
+
+    function highlightActiveCue(currentTime) {
+      if (lyricLines.length === 0) return;
+
+      let foundIdx = -1;
+      for (let i = 0; i < lyricLines.length; i++) {
+        if (lyricLines[i].time <= currentTime) {
+          foundIdx = i;
+        } else {
+          break;
+        }
+      }
+
+      if (foundIdx !== -1 && foundIdx !== activeLineIndex) {
+        activeLineIndex = foundIdx;
+        document.querySelectorAll(".cue-card").forEach((c, i) => {
+          c.classList.toggle("active", i === foundIdx);
+        });
+
+        const activeCard = document.getElementById(`cue-${foundIdx}`);
+        if (activeCard) {
+          activeCard.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+    }
+
+    function nudgeCue(idx, deltaSeconds) {
+      if (!lyricLines[idx]) return;
+      lyricLines[idx].time = Math.max(0, Math.round((lyricLines[idx].time + deltaSeconds) * 100) / 100);
+      const tagEl = document.getElementById(`tag-${idx}`);
+      if (tagEl) {
+        tagEl.innerText = formatLrcTag(lyricLines[idx].time);
+      }
+    }
+
+    function stampCurrentTime(idx) {
+      if (!wavesurfer || !lyricLines[idx]) return;
+      const current = wavesurfer.getCurrentTime();
+      lyricLines[idx].time = Math.round(current * 100) / 100;
+      const tagEl = document.getElementById(`tag-${idx}`);
+      if (tagEl) {
+        tagEl.innerText = formatLrcTag(lyricLines[idx].time);
+      }
+    }
+
+    function updateLineText(idx, newText) {
+      if (lyricLines[idx]) {
+        lyricLines[idx].text = newText;
+      }
+    }
+
+    function togglePlayPause() {
+      if (wavesurfer) {
+        wavesurfer.playPause();
+      }
+    }
+
+    async function saveLrc() {
+      if (!currentTrackBase || lyricLines.length === 0) return;
+      const btn = document.getElementById("save-lrc-btn");
+      btn.disabled = true;
+
+      // Reconstruct raw LRC string
+      const raw = lyricLines.map(line => `${formatLrcTag(line.time)} ${line.text}`).join("\n");
+
+      try {
+        const res = await fetch(`/api/lyrics/${encodeURIComponent(currentTrackBase)}?folder=${encodeURIComponent(currentSourceFolder)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_content: raw }),
+        });
+        if (res.ok) {
+          const badge = document.getElementById("editor-status-badge");
+          badge.className = "badge badge-ready";
+          badge.innerText = "Saved to .lyrics_db";
+          // Also update track in local array
+          const song = allSongs.find(s => s.filename.replace(/\.[^/.]+$/, "") === currentTrackBase);
+          if (song) song.has_lrc = true;
+          renderTrackList(allSongs);
+
+          setTimeout(() => {
+            badge.innerText = "Audio Ready";
+          }, 2500);
+        }
+      } catch (e) {
+        console.error("Save failed", e);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function setupKeyboardShortcuts() {
+      window.addEventListener("keydown", (e) => {
+        // Ignore hotkeys when typing inside an input text element
+        if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") {
+          return;
+        }
+
+        if (e.code === "Space") {
+          e.preventDefault();
+          togglePlayPause();
+        } else if (e.code === "KeyW" || e.code === "ArrowUp") {
+          e.preventDefault();
+          if (activeLineIndex > 0) {
+            selectCue(activeLineIndex - 1, true);
+          }
+        } else if (e.code === "KeyS" || e.code === "ArrowDown") {
+          e.preventDefault();
+          if (activeLineIndex < lyricLines.length - 1) {
+            selectCue(activeLineIndex + 1, true);
+          }
+        } else if (e.code === "KeyA") {
+          e.preventDefault();
+          if (activeLineIndex !== -1) {
+            nudgeCue(activeLineIndex, e.shiftKey ? -0.2 : -0.05);
+          }
+        } else if (e.code === "KeyD") {
+          e.preventDefault();
+          if (activeLineIndex !== -1) {
+            nudgeCue(activeLineIndex, e.shiftKey ? 0.2 : 0.05);
+          }
+        } else if (e.code === "KeyR") {
+          e.preventDefault();
+          if (activeLineIndex !== -1) {
+            stampCurrentTime(activeLineIndex);
+          }
+        }
+      });
+    }
+
+    function formatTime(seconds) {
+      const s = Math.max(0, Number(seconds) || 0);
+      const mins = Math.floor(s / 60);
+      const secs = (s % 60).toFixed(2);
+      return `${String(mins).padStart(2, "0")}:${String(secs).padStart(5, "0")}`;
+    }
+
+    function formatLrcTag(seconds) {
+      return `[${formatTime(seconds)}]`;
+    }
+
+    function escapeHtml(text) {
+      return (text || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function escapeId(str) {
+      return (str || "").replace(/[^a-zA-Z0-9_-]/g, "_");
+    }
+
+    /**
+     * Gracefully stop the background FastAPI Web Studio server process.
+     */
+    async function shutdownStudioServer() {
+      if (!confirm("Stop the Automatic Lyrics Synchronizer Web Studio server?")) return;
+      try {
+        await fetch("/api/shutdown", { method: "POST" });
+      } catch (_) {}
+      document.body.innerHTML = `
+        <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#06080e;color:#fff;font-family:'Inter',sans-serif;gap:16px;text-align:center;padding:20px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;color:#ef4444;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <h2 style="font-size:1.5rem;font-weight:700;color:#f87171;margin:0;">Web Studio Server Stopped</h2>
+          <p style="color:#94a3b8;font-size:0.95rem;max-width:420px;line-height:1.5;margin:0;">The local Python backend process has been terminated. You can safely close this browser window or tab.</p>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

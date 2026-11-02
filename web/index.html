@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automatic Lyrics Synchronizer - Studio</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 18V5l12-2v13"></path>
+          <circle cx="6" cy="18" r="3"></circle>
+          <circle cx="18" cy="16" r="3"></circle>
+        </svg>
+      </div>
+      <span class="brand-title">Automatic Lyrics Synchronizer</span>
+    </div>
+    <div class="header-actions">
+      <nav class="nav-tabs">
+        <a href="/sync" class="nav-tab active">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          1. Synchronization
+        </a>
+        <a href="/editor" class="nav-tab">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          2. LRC Studio & Editor
+        </a>
+      </nav>
+      <button class="btn-shutdown" id="btn-shutdown-studio" onclick="shutdownStudioServer()" title="Stop Web Studio Server">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+          <line x1="12" y1="2" x2="12" y2="12"></line>
+        </svg>
+        <span>Stop Server</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Step 1: Audio Source Selection -->
+    <section class="glass-panel card-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/></svg>
+          1. Select Audio Source Directory & Mode
+        </div>
+        <span id="detected-count-badge" class="badge badge-active">Detecting...</span>
+      </div>
+
+      <!-- Source Folder Input -->
+      <div style="margin-bottom: 16px;">
+        <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; display: block;">SOURCE DIRECTORY (FOLDER)</label>
+        <div style="display: flex; gap: 10px;">
+          <input
+            type="text"
+            id="source-folder-input"
+            class="input-field"
+            placeholder="Enter directory path (e.g. songs or C:\Music)..."
+            value="songs"
+            onkeydown="if(event.key === 'Enter') applySourceFolder()"
+          >
+          <button class="btn btn-primary" style="white-space: nowrap;" onclick="browseFolder(event)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            Browse Folder...
+          </button>
+          <button class="btn btn-secondary" style="white-space: nowrap;" onclick="applySourceFolder()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            Scan Folder
+          </button>
+        </div>
+        <div id="folder-status-hint" style="font-size: 0.78rem; color: var(--text-secondary); margin-top: 5px;">
+          Active folder: <code id="active-folder-label">songs</code>
+        </div>
+      </div>
+
+      <div class="radio-cards">
+        <label class="radio-card selected" id="card-mode-folder">
+          <input type="radio" name="source_mode" value="folder" checked onchange="handleModeChange('folder')">
+          <div>
+            <div style="font-weight: 600;">Batch Directory</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">Process all audio tracks inside the chosen folder</div>
+          </div>
+        </label>
+        <label class="radio-card" id="card-mode-file">
+          <input type="radio" name="source_mode" value="file" onchange="handleModeChange('file')">
+          <div>
+            <div style="font-weight: 600;">Individual Track</div>
+            <div style="font-size: 0.8rem; color: var(--text-secondary);">Select a specific audio file to align</div>
+          </div>
+        </label>
+      </div>
+
+      <div id="single-file-picker-container" style="display: none; margin-top: 16px;">
+        <select id="single-file-select" class="input-field">
+          <option value="">Select an audio track...</option>
+        </select>
+      </div>
+    </section>
+
+    <!-- Step 2: Model Hub & Configuration -->
+    <section class="glass-panel card-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          2. Hugging Face ASR Model Selection
+        </div>
+        <span id="cache-status-badge" class="badge badge-ready">Local Cache Active</span>
+      </div>
+
+      <div class="search-wrapper">
+        <input
+          type="text"
+          id="hf-search-input"
+          class="input-field"
+          placeholder="Search Hugging Face ASR models (e.g. 'openai/whisper', 'distil-whisper')..."
+          autocomplete="off"
+        >
+        <div id="autocomplete-dropdown" class="autocomplete-dropdown"></div>
+      </div>
+
+      <div style="margin-top: 14px;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">RECOMMENDED MODELS & PRESETS</div>
+        <div id="recommended-chips" class="chips-container"></div>
+      </div>
+
+      <div style="margin-top: 16px;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">ACTIVE EVALUATION PRIORITY (DRAG OR CLICK TO REMOVE)</div>
+        <div id="active-model-chips" class="chips-container"></div>
+      </div>
+
+      <!-- Multi-Model Consensus Explanation -->
+      <div style="margin-top: 18px; padding: 14px 16px; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.15); border-radius: var(--radius-md); font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5;">
+        <div style="font-weight: 600; color: #c7d2fe; display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          Multi-Model Consensus & Decision Logic
+        </div>
+        All active models (e.g. <em>Large v3 Turbo</em>, <em>Medium</em>, <em>Small</em>) transcribe each audio file independently. The decision engine scores candidate line alignments against canonical lyrics, awarding points for word-level anchor coincidences and silence boundaries while heavily penalizing Whisper hallucinations and repetition loops. The highest-scoring candidate is selected as the authoritative synchronized LRC.
+      </div>
+    </section>
+
+    <!-- Step 3: Execution Deck & SSE Log Stream -->
+    <section class="glass-panel card-section">
+      <div class="section-header">
+        <div class="section-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          3. Synchronization Execution & Real-Time Metrics
+        </div>
+        <span id="sync-stage-badge" class="badge badge-active" style="display: none;">IDLE</span>
+      </div>
+
+      <!-- Real-Time Metrics Deck -->
+      <div id="live-metrics-deck" class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-value" id="stat-total">0</div>
+          <div class="metric-label">Total Tracks</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color: #34d399;" id="stat-db">0</div>
+          <div class="metric-label">Local DB Hits</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color: #38bdf8;" id="stat-lrclib">0</div>
+          <div class="metric-label">LRCLIB Synced</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color: #fbbf24;" id="stat-plain">0</div>
+          <div class="metric-label">Plain Lyrics</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color: #c084fc;" id="stat-whisper">0</div>
+          <div class="metric-label">Whisper Runs</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value" style="color: #10b981;" id="stat-completed">0</div>
+          <div class="metric-label">Completed</div>
+        </div>
+      </div>
+
+      <!-- Winning Models Live Breakdown -->
+      <div id="winners-container" style="display: none; margin-bottom: 14px; font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="font-weight: 600;">MODEL WINNERS:</span>
+        <div id="winners-pills" style="display: flex; gap: 6px; flex-wrap: wrap;"></div>
+      </div>
+
+      <div style="display: flex; gap: 14px; align-items: center; flex-wrap: wrap;">
+        <button id="start-sync-btn" class="btn btn-primary" onclick="startSync()">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Start Synchronization
+        </button>
+        <button id="open-editor-btn" class="btn btn-secondary" onclick="window.location.href='/editor'" style="display: none;">
+          Open in LRC Studio &rarr;
+        </button>
+        <label style="display: inline-flex; align-items: center; gap: 8px; font-size: 0.82rem; color: #cbd5e1; cursor: pointer; user-select: none; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+          <input type="checkbox" id="force-asr-checkbox" style="cursor: pointer; accent-color: var(--accent-primary);">
+          <span><strong>Force ASR Multi-Model Evaluation</strong> (Bypass LRCLIB & DB)</span>
+        </label>
+      </div>
+
+      <div class="progress-bar-container">
+        <div id="sync-progress-fill" class="progress-bar-fill"></div>
+      </div>
+
+      <div id="status-message" style="font-size: 0.88rem; color: var(--text-secondary); margin-bottom: 12px;">
+        Ready to synchronize. LRCLIB will be queried first for instant synced lyrics before executing Whisper.
+      </div>
+
+      <div class="terminal-panel" id="terminal-feed">
+        <div class="terminal-line"><span class="terminal-tag">[SYSTEM]</span> Studio initialized. Standby.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const defaultModels = ["openai/whisper-large-v3-turbo", "openai/whisper-medium", "openai/whisper-small"];
+    let activeModels = [...defaultModels];
+    try {
+      const savedModels = localStorage.getItem("als_active_models");
+      if (savedModels) {
+        const parsed = JSON.parse(savedModels);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          activeModels = parsed;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to load saved models", e);
+    }
+
+    function saveActiveModels() {
+      localStorage.setItem("als_active_models", JSON.stringify(activeModels));
+    }
+
+    let cachedModelSet = new Set();
+    let currentMode = "folder";
+    let songsList = [];
+    let currentSourceFolder = localStorage.getItem("als_source_folder") || "songs";
+
+    // Initialize Page
+    document.addEventListener("DOMContentLoaded", async () => {
+      document.getElementById("source-folder-input").value = currentSourceFolder;
+      document.getElementById("active-folder-label").innerText = currentSourceFolder;
+      await loadSongs(currentSourceFolder);
+      await loadModelCatalog();
+      setupSearchAutocomplete();
+      renderActiveModels();
+    });
+
+    async function browseFolder(event) {
+      const currentVal = document.getElementById("source-folder-input").value.trim();
+      const btn = event.currentTarget || event.target;
+      const originalHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Selecting...`;
+      try {
+        const res = await fetch(`/api/songs/browse-folder?initial_dir=${encodeURIComponent(currentVal)}`, { method: "POST" });
+        const data = await res.json();
+        if (data.success && !data.canceled && data.path) {
+          document.getElementById("source-folder-input").value = data.path;
+          await applySourceFolder();
+        }
+      } catch (err) {
+        console.error("Browse folder failed", err);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalHtml;
+      }
+    }
+
+    async function applySourceFolder() {
+      const input = document.getElementById("source-folder-input");
+      const val = input.value.trim() || "songs";
+      currentSourceFolder = val;
+      localStorage.setItem("als_source_folder", currentSourceFolder);
+      document.getElementById("active-folder-label").innerText = currentSourceFolder;
+      await loadSongs(currentSourceFolder);
+    }
+
+    async function loadSongs(folder = currentSourceFolder) {
+      try {
+        const res = await fetch(`/api/songs?folder=${encodeURIComponent(folder)}`);
+        songsList = await res.json();
+        const badge = document.getElementById("detected-count-badge");
+        badge.innerText = `${songsList.length} Tracks Detected`;
+
+        const select = document.getElementById("single-file-select");
+        select.innerHTML = '<option value="">Select an audio track...</option>';
+        songsList.forEach(s => {
+          const opt = document.createElement("option");
+          opt.value = s.path;
+          opt.innerText = `${s.artist || "Unknown"} - ${s.title || s.filename} (${s.has_lrc ? "Synced" : "Needs Sync"})`;
+          select.appendChild(opt);
+        });
+      } catch (e) {
+        console.error("Failed to load songs", e);
+      }
+    }
+
+    async function loadModelCatalog() {
+      try {
+        const res = await fetch("/api/models/catalog");
+        const catalog = await res.json();
+        cachedModelSet = new Set(catalog.cached_models || []);
+
+        const container = document.getElementById("recommended-chips");
+        container.innerHTML = "";
+        catalog.recommended.forEach(m => {
+          const chip = document.createElement("div");
+          chip.className = `chip ${activeModels.includes(m.id) ? "active" : ""}`;
+          chip.innerHTML = `
+            <span>${m.name}</span>
+            <span class="badge ${m.is_cached ? 'badge-ready' : 'badge-download'}">${m.is_cached ? 'Ready' : 'Download'}</span>
+          `;
+          chip.onclick = () => toggleModel(m.id);
+          container.appendChild(chip);
+        });
+      } catch (e) {
+        console.error("Failed to load catalog", e);
+      }
+    }
+
+    function toggleModel(modelId) {
+      if (activeModels.includes(modelId)) {
+        if (activeModels.length > 1) {
+          activeModels = activeModels.filter(m => m !== modelId);
+        }
+      } else {
+        activeModels.push(modelId);
+      }
+      saveActiveModels();
+      renderActiveModels();
+      loadModelCatalog();
+    }
+
+    function removeModel(modelId, event) {
+      if (event) event.stopPropagation();
+      if (activeModels.length > 1) {
+        activeModels = activeModels.filter(m => m !== modelId);
+        saveActiveModels();
+        renderActiveModels();
+        loadModelCatalog();
+      }
+    }
+
+    function renderActiveModels() {
+      const container = document.getElementById("active-model-chips");
+      container.innerHTML = "";
+      activeModels.forEach((m, idx) => {
+        const chip = document.createElement("div");
+        chip.className = "chip active";
+        chip.innerHTML = `
+          <strong>#${idx + 1}</strong>
+          <span>${m}</span>
+          <span style="opacity: 0.8; font-weight: bold; margin-left: 4px; padding: 0 4px; cursor: pointer;" title="Remove model" onclick="removeModel('${m}', event)">&times;</span>
+        `;
+        container.appendChild(chip);
+      });
+    }
+
+    function handleModeChange(mode) {
+      currentMode = mode;
+      document.getElementById("card-mode-folder").classList.toggle("selected", mode === "folder");
+      document.getElementById("card-mode-file").classList.toggle("selected", mode === "file");
+      document.getElementById("single-file-picker-container").style.display = mode === "file" ? "block" : "none";
+    }
+
+    let debounceTimer;
+    function setupSearchAutocomplete() {
+      const input = document.getElementById("hf-search-input");
+      const dropdown = document.getElementById("autocomplete-dropdown");
+
+      input.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        const query = input.value.trim();
+        if (query.length < 2) {
+          dropdown.classList.remove("open");
+          return;
+        }
+
+        debounceTimer = setTimeout(async () => {
+          try {
+            const res = await fetch(`/api/models/search?q=${encodeURIComponent(query)}&limit=8`);
+            const results = await res.json();
+            dropdown.innerHTML = "";
+            if (results.length === 0) {
+              dropdown.innerHTML = '<div style="padding: 12px; color: var(--text-muted);">No ASR models found</div>';
+            } else {
+              results.forEach(item => {
+                const el = document.createElement("div");
+                el.className = "autocomplete-item";
+                el.innerHTML = `
+                  <div>
+                    <div style="font-weight: 600; font-size: 0.88rem;">${item.id}</div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">${item.description}</div>
+                  </div>
+                  <span class="badge ${item.is_cached ? 'badge-ready' : 'badge-download'}">${item.is_cached ? 'Ready' : 'Download'}</span>
+                `;
+                el.onclick = () => {
+                  if (!activeModels.includes(item.id)) {
+                    activeModels.push(item.id);
+                    saveActiveModels();
+                    renderActiveModels();
+                    loadModelCatalog();
+                  }
+                  dropdown.classList.remove("open");
+                  input.value = "";
+                };
+                dropdown.appendChild(el);
+              });
+            }
+            dropdown.classList.add("open");
+          } catch (e) {
+            console.error(e);
+          }
+        }, 250);
+      });
+
+      document.addEventListener("click", (e) => {
+        if (!e.target.closest(".search-wrapper")) {
+          dropdown.classList.remove("open");
+        }
+      });
+    }
+
+    async function startSync() {
+      const btn = document.getElementById("start-sync-btn");
+      const progressFill = document.getElementById("sync-progress-fill");
+      const statusMsg = document.getElementById("status-message");
+      const stageBadge = document.getElementById("sync-stage-badge");
+      const terminal = document.getElementById("terminal-feed");
+      const openEditorBtn = document.getElementById("open-editor-btn");
+
+      btn.disabled = true;
+      openEditorBtn.style.display = "none";
+      stageBadge.style.display = "inline-block";
+      stageBadge.innerText = "INITIALIZING";
+      progressFill.style.width = "5%";
+
+      const forceAsr = document.getElementById("force-asr-checkbox") ? document.getElementById("force-asr-checkbox").checked : false;
+      const payload = {
+        mode: currentMode,
+        folder_path: currentSourceFolder,
+        file_path: currentMode === "file" ? document.getElementById("single-file-select").value : null,
+        models: activeModels,
+        force_asr: forceAsr
+      };
+
+      try {
+        const res = await fetch("/api/sync/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        const taskId = data.task_id;
+
+        // Connect to SSE stream
+        const eventSource = new EventSource(`/api/sync/stream/${taskId}`);
+        eventSource.onmessage = (e) => {
+          const ev = JSON.parse(e.data);
+          if (ev.percent !== undefined) {
+            progressFill.style.width = `${ev.percent}%`;
+          }
+          if (ev.stats) {
+            document.getElementById("stat-total").innerText = ev.stats.total || 0;
+            document.getElementById("stat-db").innerText = ev.stats.db_hits || 0;
+            document.getElementById("stat-lrclib").innerText = ev.stats.lrclib_synced || 0;
+            document.getElementById("stat-plain").innerText = ev.stats.plain_lyrics || 0;
+            document.getElementById("stat-whisper").innerText = ev.stats.whisper_runs || 0;
+            document.getElementById("stat-completed").innerText = `${ev.stats.completed || 0} / ${ev.stats.total || 0}`;
+
+            if (ev.stats.model_winners && Object.keys(ev.stats.model_winners).length > 0) {
+              const winnersContainer = document.getElementById("winners-container");
+              const pills = document.getElementById("winners-pills");
+              winnersContainer.style.display = "flex";
+              pills.innerHTML = "";
+              for (const [modelName, count] of Object.entries(ev.stats.model_winners)) {
+                const shortName = modelName.split("/").pop();
+                const pill = document.createElement("span");
+                pill.className = "model-winner-pill";
+                pill.innerHTML = `<strong>${shortName}</strong>: ${count}`;
+                pills.appendChild(pill);
+              }
+            }
+          }
+          if (ev.stage) {
+            stageBadge.innerText = ev.stage;
+          }
+          if (ev.message) {
+            statusMsg.innerText = ev.message;
+            const line = document.createElement("div");
+            line.className = "terminal-line";
+            let tagColor = "#38bdf8";
+            if (ev.stage && (ev.stage.includes("ERROR") || ev.stage.includes("FAIL"))) tagColor = "#ef4444";
+            else if (ev.stage && (ev.stage.includes("WARN") || ev.stage.includes("SKIP"))) tagColor = "#f59e0b";
+            else if (ev.stage && (ev.stage.includes("SUCCESS") || ev.stage.includes("SYNCED") || ev.stage.includes("DONE"))) tagColor = "#10b981";
+            line.innerHTML = `<span class="terminal-tag" style="color: ${tagColor};">[${ev.stage || 'LOG'}]</span> <span>${ev.message}</span>`;
+            terminal.appendChild(line);
+            terminal.scrollTop = terminal.scrollHeight;
+          }
+
+          if (ev.stage === "FINISHED" || ev.stage === "CLOSED" || ev.stage === "DONE") {
+            eventSource.close();
+            btn.disabled = false;
+            openEditorBtn.style.display = "inline-flex";
+            stageBadge.className = "badge badge-ready";
+            stageBadge.innerText = "COMPLETED";
+            loadSongs();
+          } else if (ev.stage === "ERROR") {
+            eventSource.close();
+            btn.disabled = false;
+            stageBadge.className = "badge badge-download";
+            stageBadge.innerText = "FAILED";
+          }
+        };
+
+        eventSource.onerror = () => {
+          eventSource.close();
+          btn.disabled = false;
+        };
+
+      } catch (err) {
+        statusMsg.innerText = `Error launching sync: ${err.message}`;
+        btn.disabled = false;
+      }
+    }
+
+    /**
+     * Gracefully stop the background FastAPI Web Studio server process.
+     */
+    async function shutdownStudioServer() {
+      if (!confirm("Stop the Automatic Lyrics Synchronizer Web Studio server?")) return;
+      try {
+        await fetch("/api/shutdown", { method: "POST" });
+      } catch (_) {}
+      document.body.innerHTML = `
+        <div style="height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#06080e;color:#fff;font-family:'Inter',sans-serif;gap:16px;text-align:center;padding:20px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);display:flex;align-items:center;justify-content:center;color:#ef4444;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <h2 style="font-size:1.5rem;font-weight:700;color:#f87171;margin:0;">Web Studio Server Stopped</h2>
+          <p style="color:#94a3b8;font-size:0.95rem;max-width:420px;line-height:1.5;margin:0;">The local Python backend process has been terminated. You can safely close this browser window or tab.</p>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>

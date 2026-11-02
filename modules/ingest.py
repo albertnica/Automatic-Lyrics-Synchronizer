@@ -16,16 +16,16 @@ from .utils import sanitize_filename, extract_metadata_from_flac, parse_lrc_head
 from .logs_manager import dbg, info
 from config import SONGS_FOLDER, LYRICS_FOLDER, LYRICS_DB_FOLDER
 
-def ingest_existing_lrcs_and_cleanup_songs():
+def ingest_existing_lrcs_and_cleanup_songs(folder: str = SONGS_FOLDER):
     """
-    Move found .lrc files from songs/ to lyrics/ and clean non-audio files in songs/.
+    Move found .lrc files from songs/ (or custom folder) to lyrics/ and clean non-audio files in that folder.
     """
-    if not os.path.exists(SONGS_FOLDER):
-        dbg("songs folder not present; skipping ingest")
+    if not os.path.exists(folder):
+        dbg(f"folder {folder} not present; skipping ingest")
         return
 
-    info("Ingesting .lrc files found under songs/ and cleaning songs/...")
-    lrc_patterns = [os.path.join(SONGS_FOLDER, "*.lrc"), os.path.join(SONGS_FOLDER, "*.LRC")]
+    info(f"Ingesting .lrc files found under {folder} and cleaning...")
+    lrc_patterns = [os.path.join(folder, "*.lrc"), os.path.join(folder, "*.LRC")]
     lrc_files = []
     for p in lrc_patterns:
         lrc_files.extend(glob.glob(p))
@@ -94,7 +94,7 @@ def ingest_existing_lrcs_and_cleanup_songs():
 
     # Remove non-audio files from songs/ to keep folder tidy.
     info("Cleaning songs/: deleting non-audio files...")
-    allowed_exts = {'.flac', '.mp3', '.wav'}
+    allowed_exts = {'.flac', '.mp3', '.wav', '.txt'}
     for entry in os.listdir(SONGS_FOLDER):
         fpath = os.path.join(SONGS_FOLDER, entry)
         if os.path.isfile(fpath):
